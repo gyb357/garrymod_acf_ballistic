@@ -1,0 +1,8 @@
+python==3.6
+pytorch==1.8.0
+cudatoolkit==10.2
+tensorboard==1.15.0
+matplotlib
+pandas
+rich
+pyyaml
