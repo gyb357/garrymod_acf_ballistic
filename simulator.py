@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from torch import Tensor
 from typing import Callable, Tuple, List
 import torch
-import math
 
 
 @dataclass
@@ -25,7 +24,10 @@ class ProjectileSimulator():
     def __init__(self, delta_time: float, max_distance: float) -> None:
         # attributes
         self.delta_time = delta_time
-        self.max_distance_x = math.sqrt(3*max_distance**2)
+
+        # maximum simulation distance
+        distance = torch.tensor(3*max_distance**2, dtype=self.dtype)
+        self.max_distance_x = torch.sqrt(distance)
         self.max_distance_y = -max_distance
 
         # initial state vectors
@@ -33,14 +35,14 @@ class ProjectileSimulator():
 
     def build_state(self, velocity: float, angle: float) -> None:
         inch_velocity = self.meter_to_inch*velocity
-        rad_angle = math.radians(angle)
+        rad_angle = torch.deg2rad(angle)
 
         # initial position
         self.state = [
             StateVectors(
                 position=torch.tensor([0, 0], dtype=self.dtype),
-                velocity=torch.tensor([inch_velocity*math.cos(rad_angle),
-                                       inch_velocity*math.sin(rad_angle)], dtype=self.dtype),
+                velocity=torch.tensor([inch_velocity*torch.cos(rad_angle),
+                                       inch_velocity*torch.sin(rad_angle)], dtype=self.dtype),
                 time=torch.tensor([0], dtype=torch.float32)
             )
         ]
