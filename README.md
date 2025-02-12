@@ -1,4 +1,4 @@
-## Projectile 
+## Projectile Predict AI Project
 
 This project aims to predict the initial launch angle and flight time required to hit a target. To achieve this, the dataset incorporates various numerical integration methods that account for drag forces. Due to the nature of trajectory data, the dataset can become large, posing challenges in memory and storage management. To address this, the project dynamically generates and removes trajectory data, optimizing memory and storage efficiency.
 
