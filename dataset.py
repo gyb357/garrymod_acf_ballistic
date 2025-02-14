@@ -1,8 +1,8 @@
-from typing import Tuple, List
 from simulator import ProjectileSimulator, Method
 from rich.progress import Progress, TextColumn, BarColumn, TimeRemainingColumn
-from torch.utils.data import Dataset, DataLoader, random_split
+from typing import Tuple
 from torch import Tensor
+from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 
 
@@ -12,7 +12,7 @@ class ProjectileDatasetGenerator():
 
     def __init__(
             self,
-            angle_range: Tuple[float, float, float],
+            angle_range: tuple,
             delta_time: float,
             max_distance: float
     ) -> None:
@@ -43,12 +43,12 @@ class ProjectileDatasetGenerator():
             self,
             muzzle_velocity: float,
             drag_coefficient: float,
-            drag_divisor: float,
+            drag_divisor: int,
             method: Method
-    ) -> List:
-        # add progress bar
+    ) -> None:
+        # add task to progress bar
         task = self.progress.add_task(
-            description='Generating dataset...',
+            description='Generating dataset for angle:',
             total=len(self.angles),
             angle=''
         )
@@ -63,60 +63,55 @@ class ProjectileDatasetGenerator():
             self.simulator.build_state(muzzle_velocity, angle)
             self.simulator.simulate(drag_coefficient, method)
 
-            # convert muzzle velocity from m/s to inch/s
+            # convert muzzle_velocity to inch/s
             inch_velocity = self.simulator.meter_to_inch*muzzle_velocity
 
-            # distinguish between high and low angles
+            # distinguish between high low angles
             arc = -1 if angle < 45 else 1
 
+            # iterate over states
             for state in self.simulator.state:
                 x = state.position[0]
                 y = state.position[1]
 
-                # approximate launch angle
-                temp = self.gravity_y*x**2/(2*inch_velocity**2)
-                launch_angle = self.quadratic_formula(
-                    a=temp,
-                    b=x,
-                    c=temp - y,
-                    sign=arc
-                )
-                launch_angle = torch.atan(launch_angle)
+                if x != 0 and y != 0:
+                    # compute approximate launch angle and flight time
+                    temp = self.gravity_y*x**2/(2*inch_velocity**2)
+                    launch_angle = self.quadratic_formula(
+                        a=temp,
+                        b=x,
+                        c=temp - y,
+                        sign=arc
+                    )
+                    launch_angle = torch.atan(launch_angle)
 
-                # approximate flight time
-                v_cos = inch_velocity*torch.cos(launch_angle)
-                flight_time = self.quadratic_formula(
-                    a=(drag_coefficient*v_cos**2)/drag_divisor,
-                    b=v_cos,
-                    c=torch.sqrt(x**2 + y**2)*torch.cos(torch.atan(y/x)),
-                    sign=1
-                )
+                    v_cos = inch_velocity*torch.cos(launch_angle)
+                    flight_time = self.quadratic_formula(
+                        a=(drag_coefficient*v_cos**2)/drag_divisor,
+                        b=v_cos,
+                        c=torch.sqrt(x**2 + y**2)*torch.cos(torch.atan(y/x)),
+                        sign=1
+                    )
 
-                # check for nan values
-                if launch_angle.isnan() or flight_time.isnan():
-                    continue
+                    # concat dataset
+                    dataset.append(torch.cat([
+                        # inputs
+                        torch.tensor([
+                            muzzle_velocity,
+                            drag_coefficient,
+                            arc,
+                            x,
+                            y,
+                            # launch_angle,
+                            # flight_time
+                        ], dtype=self.dtype).unsqueeze(0),
 
-                # final data processing
-                launch_angle = -torch.rad2deg(launch_angle)
-                flight_time = -flight_time
-
-                # concat dataset
-                dataset.append(torch.cat([
-                    torch.tensor([
-                        muzzle_velocity,
-                        drag_coefficient,
-                        arc,
-                        x/self.simulator.max_distance_x,
-                        y/self.simulator.max_distance_y,
-                        launch_angle,
-                        flight_time
-                    ], dtype=self.dtype).unsqueeze(0),
-
-                    torch.tensor([
-                        angle,
-                        state.time
-                    ], dtype=self.dtype).unsqueeze(0)
-                ], dim=1))
+                        # outputs
+                        torch.tensor([
+                            angle,
+                            state.time
+                        ], dtype=self.dtype).unsqueeze(0)
+                    ], dim=1))
 
             # update progress bar
             self.progress.update(task, advance=1, angle=f'[magenta]{angle:.2f}°')
@@ -146,6 +141,9 @@ class ProjectileDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[Tensor, Tensor]:
         inputs = self.dataset[index, :-2] # muzzle_velocity, drag_coefficient, arc, x, y, launch_angle, flight_time
         labels = self.dataset[index, -2:] # angle, time
+
+        inputs.requires_grad = True
+        labels.requires_grad = True
         
         # convert to tensor if not already
         if not isinstance(inputs, Tensor):
